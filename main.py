@@ -15,7 +15,7 @@ st.set_page_config(layout="wide")
 @st.cache_resource
 def create_client():
     credentials = service_account.Credentials.from_service_account_info(
-        json.loads(os.environ.get('GOOGLE_APPLICATION_CREDENTIALS_REGGIT'))
+        json.loads(st.secrets['GOOGLE_APPLICATION_CREDENTIALS_REGGIT'])
     )
     client = bigquery.Client(credentials=credentials)
     return client
@@ -23,9 +23,8 @@ def create_client():
 
 @st.cache_resource
 def create_openai_client():
-    print(os.environ.get("OPENAI_API_KEY"))
     client = OpenAI(
-        api_key=os.environ.get("OPENAI_API_KEY")
+        api_key=st.secrets["OPENAI_API_KEY"]
     )
     return client
 
