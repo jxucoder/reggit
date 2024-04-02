@@ -15,7 +15,7 @@ st.set_page_config(layout="wide")
 @st.cache_resource
 def create_client():
     credentials = service_account.Credentials.from_service_account_info(
-        json.loads(st.secrets['GOOGLE_APPLICATION_CREDENTIALS_REGGIT'])
+        st.secrets['GOOGLE_APPLICATION_CREDENTIALS_REGGIT']
     )
     client = bigquery.Client(credentials=credentials)
     return client
@@ -107,7 +107,6 @@ Before answering, do the following:
 
 with st.sidebar:
     with st.spinner('Wait for Insights to be generated...'):
-        time.sleep(5)
         with st.expander("Insights", expanded=True):
             # Render the HTML content inside the expander
             st.markdown(insights, unsafe_allow_html=True)
