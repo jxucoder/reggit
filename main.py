@@ -8,6 +8,9 @@ import json
 from datetime import datetime
 from openai import OpenAI
 import pandas as pd
+import matplotlib.pyplot as plt
+import altair as alt
+
 
 st.set_page_config(layout="wide")
 
@@ -55,12 +58,24 @@ def openai_chat(question):
 
 st.sidebar.title("Reggit")
 document_id = st.sidebar.selectbox(label="Document ID", options=['FINCEN-2024-0009-0001'])
-rows = run_query(f"SELECT * FROM `reggit.regulations_gov.comments` cs left join `reggit.regulations_gov.comments_genai` cg"
-                 f" on cs.commentId = cg.commentId where commentOnDocumentId='{document_id}' and prompt_version = 'v1'")
+rows = run_query(f"""
+    WITH RankedComments AS (
+        SELECT 
+            cs.*,
+            cg.*,
+            ROW_NUMBER() OVER(PARTITION BY cs.commentId ORDER BY cs.batch_updated_time DESC) as rn
+        FROM `reggit.regulations_gov.comments` cs
+        LEFT JOIN `reggit.regulations_gov.comments_genai` cg 
+            ON cs.commentId = cg.commentId
+        WHERE cs.commentOnDocumentId='{document_id}' AND prompt_version = 'v5'
+    )
+    SELECT *
+    FROM RankedComments
+    WHERE rn = 1;
+""")
 df = pd.DataFrame.from_records(rows)
 document_title = df['document_title'].iloc[0]
 st.sidebar.markdown(f"**Document**: [{df['document_title'].iloc[0]}](https://www.regulations.gov/document/{document_id})")
-
 df.sort_values(['posted_date'], inplace=True, ascending=False)
 
 
@@ -74,12 +89,27 @@ start_time = st.sidebar.slider(
 
 df_filtered = df[pd.to_datetime(df['posted_date']) >= pd.to_datetime(start_time)]
 
+series = df_filtered.sentiment
+df_counts = series.value_counts().reset_index()
+df_counts.columns = ['Sentiment', 'Counts']
+
+# Sorting values for better visualization
+df_counts = df_counts.sort_values(by='Counts', ascending=True)
+color_scale = alt.Scale(domain=['oppose', 'support'],
+                        range=['red', 'green'])
+# Create a horizontal bar chart using Altair with narrower bars
+chart = alt.Chart(df_counts).mark_bar(size=20).encode(  # Adjust size here
+    x='Counts',
+    y=alt.Y('Sentiment', sort='-x'),  # Sort bars by Counts
+    color=alt.Color('Sentiment', scale=color_scale)
+)
+st.altair_chart(chart, use_container_width=True)
+
 
 
 col_left, col_right = st.columns(2)
 
-
-for col, direction, title in [(col_left, 'against', '❌'), (col_right, 'support', '✅')]:
+for col, direction, title in [(col_left, 'oppose', '❌'), (col_right, 'support', '✅')]:
     with col:
         st.markdown(f"<h1 style='text-align: center;'> {title} </h1>", unsafe_allow_html=True)
         for i, row in df_filtered[df_filtered.sentiment == direction].iterrows():
@@ -89,7 +119,7 @@ for col, direction, title in [(col_left, 'against', '❌'), (col_right, 'support
                 st.markdown(row['comment'], unsafe_allow_html=True)
 
 support_comments = '\n --- \n'.join(df[df.sentiment == "support"].comment.values)
-against_comments = '\n --- \n'.join(df[df.sentiment == "against"].comment.values)
+oppose_comments = '\n --- \n'.join(df[df.sentiment == "oppose"].comment.values)
 
 insights = openai_chat(f"""
 Your job is to analyze public comments posted related to Regulations.gov document: {document_title}. 
@@ -101,8 +131,8 @@ Please answer
 Before answering, do the following:
 (1) Read the supporting views below:
 {support_comments}
-(2) Read the against views below:
-{against_comments}
+(2) Read the oppose views below:
+{oppose_comments}
 """)
 
 with st.sidebar:

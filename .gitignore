@@ -4,3 +4,4 @@
 .env/
 .streamlit/
 batch.ipynb
+.ipynb_checkpoints/
