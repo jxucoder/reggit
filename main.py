@@ -1,14 +1,8 @@
-import time
-
 import streamlit as st
 from google.oauth2 import service_account
 from google.cloud import bigquery
-import os
-import json
-from datetime import datetime
 from openai import OpenAI
 import pandas as pd
-import matplotlib.pyplot as plt
 import altair as alt
 
 
@@ -32,7 +26,7 @@ def create_openai_client():
     return client
 
 
-@st.cache_data
+@st.cache_data(ttl='1h')
 def run_query(query):
     client = create_client()
     query_job = client.query(query)
