@@ -53,15 +53,26 @@ def openai_chat(question):
 st.sidebar.title("Reggit")
 document_id = st.sidebar.selectbox(label="Document ID", options=['FINCEN-2024-0009-0001'])
 rows = run_query(f"""
-    WITH RankedComments AS (
+    WITH RankedGenAI AS (
+        SELECT 
+            *,
+            ROW_NUMBER() OVER(PARTITION BY cg.commentId ORDER BY version DESC) as rn_genai
+        FROM `reggit.regulations_gov.comments_genai` cg
+    ),
+    GenAITags AS (
+        SELECT *
+        FROM RankedGenAI
+        WHERE rn_genai = 1
+    ),
+    RankedComments AS (
         SELECT 
             cs.*,
             cg.*,
             ROW_NUMBER() OVER(PARTITION BY cs.commentId ORDER BY cs.batch_updated_time DESC) as rn
         FROM `reggit.regulations_gov.comments` cs
-        LEFT JOIN `reggit.regulations_gov.comments_genai` cg 
+        LEFT JOIN GenAITags cg 
             ON cs.commentId = cg.commentId
-        WHERE cs.commentOnDocumentId='{document_id}' AND prompt_version = 'v5'
+        WHERE cs.commentOnDocumentId='{document_id}'
     )
     SELECT *
     FROM RankedComments
@@ -83,34 +94,43 @@ start_time = st.sidebar.slider(
 
 df_filtered = df[pd.to_datetime(df['posted_date']) >= pd.to_datetime(start_time)]
 
-series = df_filtered.sentiment
-df_counts = series.value_counts().reset_index()
-df_counts.columns = ['Sentiment', 'Counts']
 
-# Sorting values for better visualization
-df_counts = df_counts.sort_values(by='Counts', ascending=True)
-color_scale = alt.Scale(domain=['oppose', 'support'],
-                        range=['red', 'green'])
-# Create a horizontal bar chart using Altair with narrower bars
-chart = alt.Chart(df_counts).mark_bar(size=20).encode(  # Adjust size here
-    x='Counts',
-    y=alt.Y('Sentiment', sort='-x'),  # Sort bars by Counts
-    color=alt.Color('Sentiment', scale=color_scale)
-)
-st.altair_chart(chart, use_container_width=True)
+ai_tagging = st.checkbox('Show AI-based sentiment tagging (which can be inaccurate)', value=True)
+
+if ai_tagging:
+    series = df_filtered.sentiment
+    df_counts = series.value_counts().reset_index()
+    df_counts.columns = ['Sentiment', 'Counts']
+
+    # Sorting values for better visualization
+    df_counts = df_counts.sort_values(by='Counts', ascending=True)
+    color_scale = alt.Scale(domain=['oppose', 'support'],
+                            range=['red', 'green'])
+    # Create a horizontal bar chart using Altair with narrower bars
+    chart = alt.Chart(df_counts).mark_bar(size=20).encode(  # Adjust size here
+        x='Counts',
+        y=alt.Y('Sentiment', sort='-x'),  # Sort bars by Counts
+        color=alt.Color('Sentiment', scale=color_scale)
+    )
+    st.altair_chart(chart, use_container_width=True)
 
 
+    col_left, col_right = st.columns(2)
 
-col_left, col_right = st.columns(2)
-
-for col, direction, title in [(col_left, 'oppose', '❌'), (col_right, 'support', '✅')]:
-    with col:
-        st.markdown(f"<h1 style='text-align: center;'> {title} </h1>", unsafe_allow_html=True)
-        for i, row in df_filtered[df_filtered.sentiment == direction].iterrows():
-            # Create an expander for each piece of text. Note: `expanded=True` makes it open by default.
-            with st.expander(f"{row['title']}", expanded=True):
-                # Render the HTML content inside the expander
-                st.markdown(row['comment'], unsafe_allow_html=True)
+    for col, direction, title in [(col_left, 'oppose', '❌'), (col_right, 'support', '✅')]:
+        with col:
+            st.markdown(f"<h1 style='text-align: center;'> {title} </h1>", unsafe_allow_html=True)
+            for i, row in df_filtered[df_filtered.sentiment == direction].iterrows():
+                # Create an expander for each piece of text. Note: `expanded=True` makes it open by default.
+                with st.expander(f"{row['title']}: [{row['commentId']}]", expanded=True):
+                    # Render the HTML content inside the expander
+                    st.markdown(row['comment'], unsafe_allow_html=True)
+else:
+    for i, row in df_filtered.iterrows():
+        # Create an expander for each piece of text. Note: `expanded=True` makes it open by default.
+        with st.expander(f"{row['title']}: [{row['commentId']}]", expanded=True):
+            # Render the HTML content inside the expander
+            st.markdown(row['comment'], unsafe_allow_html=True)
 
 support_comments = '\n --- \n'.join(df[df.sentiment == "support"].comment.values)
 oppose_comments = '\n --- \n'.join(df[df.sentiment == "oppose"].comment.values)
