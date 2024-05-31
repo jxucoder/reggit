@@ -93,7 +93,7 @@ start_time = st.sidebar.slider(
 
 
 df_filtered = df[pd.to_datetime(df['posted_date']) >= pd.to_datetime(start_time)]
-df_filtered = df_filtered[df_filtered.Sentiment.isin(['oppose', 'support', 'unclear'])]
+df_filtered = df_filtered[df_filtered.sentiment.isin(['oppose', 'support', 'unclear'])]
 
 ai_tagging = st.checkbox('Show AI-based sentiment tagging (which can be inaccurate)', value=True)
 
